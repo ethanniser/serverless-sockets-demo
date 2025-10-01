@@ -1,0 +1,39 @@
+services:
+  pushpin:
+    image: fanout/pushpin:latest
+    ports:
+      - "7999:7999"  # HTTP port
+      - "5560:5560"  # Stats port (SUB)
+      - "5563:5563"  # Publish port (PULL)
+    volumes:
+      - ./pushpin/routes:/etc/pushpin/routes
+    depends_on:
+      - origin-api
+
+  origin-api:
+    build:
+      context: ./origin-api
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - S2_AUTH_TOKEN=${S2_AUTH_TOKEN}
+      - S2_BASIN=${S2_BASIN}
+
+  pubsub-service:
+    build:
+      context: ./pubsub-service
+      dockerfile: Dockerfile
+    environment:
+      - PUSHPIN_STATS_URI=tcp://pushpin:5560
+      - PUSHPIN_PUBLISH_URI=tcp://pushpin:5563
+      - S2_AUTH_TOKEN=${S2_AUTH_TOKEN}
+      - S2_BASIN=${S2_BASIN}
+    depends_on:
+      - pushpin
+
+networks:
+  default:
+    name: pushpin-network
+
