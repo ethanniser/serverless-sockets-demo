@@ -1,6 +1,8 @@
-import { Subscriber, Publisher } from "zeromq";
+import { Subscriber, Push } from "zeromq";
 import { S2 } from "@s2-dev/streamstore";
 import { EventStream } from "@s2-dev/streamstore/lib/event-streams.js";
+import { ReadAcceptEnum } from "@s2-dev/streamstore/sdk/records.js";
+import type { ReadEvent } from "@s2-dev/streamstore/models/components";
 
 const PUSHPIN_STATS_URI =
   process.env.PUSHPIN_STATS_URI || "tcp://localhost:5560";
@@ -21,8 +23,8 @@ const statsSocket = new Subscriber();
 statsSocket.connect(PUSHPIN_STATS_URI);
 statsSocket.subscribe(); // Subscribe to all messages
 
-// ZMQ publisher for sending messages back to Pushpin
-const publishSocket = new Publisher();
+// ZMQ PUSH socket for sending messages to Pushpin's PULL socket
+const publishSocket = new Push();
 publishSocket.connect(PUSHPIN_PUBLISH_URI);
 
 console.log(`📊 Connected to Pushpin stats at ${PUSHPIN_STATS_URI}`);
@@ -41,30 +43,20 @@ async function subscribeToS2Stream(topic: string) {
   activeSubscriptions.set(topic, abortController);
 
   try {
-    // Get the current tail position to start reading from latest
-    const tailResponse = await s2.records.checkTail({
-      s2Basin: basin,
-      stream: `/v1/${topic}`,
-    });
-
     try {
       const readResponse = await s2.records.read(
         {
           s2Basin: basin,
-          stream: `/v1/${topic}`,
-          seqNum: tailResponse.tail.seqNum,
+          stream: `v1/${topic}`,
         },
         {
           signal: abortController.signal,
+          acceptHeaderOverride: ReadAcceptEnum.textEventStream,
         }
       );
 
-      if (!(readResponse instanceof EventStream)) {
-        throw new Error("Read response is not an event stream");
-      }
-
       // Process the events
-      for await (const event of readResponse) {
+      for await (const event of readResponse as EventStream<ReadEvent>) {
         if (abortController.signal.aborted) {
           console.log(`[S2] Subscription aborted for: ${topic}`);
           return;
@@ -78,21 +70,19 @@ async function subscribeToS2Stream(topic: string) {
           if (body) {
             console.log(`[S2→Pushpin] Topic: ${topic}, Message: ${body}`);
 
-            // Send to Pushpin via ZMQ publish
-            const pushpinMessage = JSON.stringify({
-              items: [
-                {
-                  channel: topic,
-                  formats: {
-                    "http-stream": {
-                      content: body + "\n",
-                    },
-                  },
+            // Send to Pushpin via ZMQ PULL socket
+            // Format: "J" prefix + single item JSON (not wrapped in "items" array)
+            const item = {
+              channel: topic,
+              formats: {
+                "http-stream": {
+                  content: body + "\n",
                 },
-              ],
-            });
+              },
+            };
+            const pushpinMessage = "J" + JSON.stringify(item);
 
-            await publishSocket.send([topic, pushpinMessage]);
+            await publishSocket.send(pushpinMessage);
           }
         }
       }
@@ -124,20 +114,29 @@ function unsubscribeFromS2Stream(topic: string) {
 async function listenToStats() {
   console.log("👂 Listening for Pushpin stats events...");
 
-  for await (const [msg] of statsSocket) {
+  for await (const frames of statsSocket) {
     try {
-      if (msg) {
-        const statsMessage = JSON.parse(msg.toString());
+      if (frames.length === 1) {
+        // Single frame format: "<type> J<json>"
+        const data = frames[0]!.toString();
+        const spaceIndex = data.indexOf(" ");
 
-        // Stats format: { type: "conn", event: "subscribe"|"unsubscribe", channel: "topic" }
-        if (statsMessage.type === "conn") {
-          const channel = statsMessage.channel;
+        if (spaceIndex > 0) {
+          const messageType = data.substring(0, spaceIndex);
+          // Skip the "J" marker and parse the JSON
+          const jsonData = data.substring(spaceIndex + 2); // +2 to skip " J"
+          const payload = JSON.parse(jsonData);
 
-          if (statsMessage.event === "subscribe") {
-            console.log(`[Stats] New subscription: ${channel}`);
+          // console.log(`[Stats] ${messageType}:`, payload);
+
+          // Handle subscription events
+          if (messageType === "sub") {
+            const channel = payload.channel;
+            console.log(`[Stats] ✅ New subscription: ${channel}`);
             subscribeToS2Stream(channel);
-          } else if (statsMessage.event === "unsubscribe") {
-            console.log(`[Stats] Unsubscribe: ${channel}`);
+          } else if (messageType === "unsub") {
+            const channel = payload.channel;
+            console.log(`[Stats] ❌ Unsubscribe: ${channel}`);
             unsubscribeFromS2Stream(channel);
           }
         }

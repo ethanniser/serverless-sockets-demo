@@ -49,7 +49,7 @@ const server = Bun.serve({
         // Append record to S2 stream (stream name = topic)
         await s2.records.append({
           s2Basin: basin,
-          stream: `/v1/${topic}`,
+          stream: `v1/${topic}`,
           appendInput: { records: [{ body: body }] },
         });
 

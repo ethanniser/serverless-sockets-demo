@@ -79,10 +79,8 @@ async function main() {
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
 
-  console.log("\n--- Waiting for messages (10 seconds) ---");
-
   // Wait a bit more to receive messages
-  await new Promise((resolve) => setTimeout(resolve, 10000));
+  await new Promise((resolve) => setTimeout(resolve, 1000));
 
   console.log("\n✅ Demo complete!");
   process.exit(0);
