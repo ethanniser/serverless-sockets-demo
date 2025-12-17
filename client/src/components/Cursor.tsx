@@ -48,4 +48,3 @@ export function Cursor({ id, x, y }: CursorProps) {
     </div>
   );
 }
-

@@ -12,13 +12,14 @@ type CursorData = {
 };
 
 const BATCHING_TIME = 500; // Batch cursor updates every 500ms
-const PUSHPIN_URL = import.meta.env.VITE_PUSHPIN_URL || "http://localhost:7999";
 
 export default function Cursors() {
-  const [otherCursors, setOtherCursors] = useState<Record<string, CursorData>>({});
+  const [otherCursors, setOtherCursors] = useState<Record<string, CursorData>>(
+    {}
+  );
   const [isConnected, setIsConnected] = useState(false);
   const [myId] = useState(() => generateUsername());
-  
+
   const wsRef = useRef<WebSocket | null>(null);
   const pendingPositions = useRef<{ x: number; y: number; t: number }[]>([]);
   const batchStartTime = useRef<number>(0);
@@ -26,19 +27,21 @@ export default function Cursors() {
 
   // Connect to WebSocket
   useEffect(() => {
-    const ws = new WebSocket(`${PUSHPIN_URL.replace("http", "ws")}/cursors`);
+    const ws = new WebSocket("/cursors");
     wsRef.current = ws;
 
     ws.onopen = () => {
       console.log("[Cursors] Connected to WebSocket");
       setIsConnected(true);
-      
+
       // Send join message
       if (!hasJoined.current) {
-        ws.send(JSON.stringify({
-          type: "cursor-join",
-          id: myId,
-        }));
+        ws.send(
+          JSON.stringify({
+            type: "cursor-join",
+            id: myId,
+          })
+        );
         hasJoined.current = true;
       }
     };
@@ -112,10 +115,12 @@ export default function Cursors() {
 
     return () => {
       if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-          type: "cursor-leave",
-          id: myId,
-        }));
+        ws.send(
+          JSON.stringify({
+            type: "cursor-leave",
+            id: myId,
+          })
+        );
       }
       ws.close();
     };
@@ -124,15 +129,21 @@ export default function Cursors() {
   // Batch and send cursor updates
   useEffect(() => {
     const interval = setInterval(() => {
-      if (pendingPositions.current.length === 0 || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      if (
+        pendingPositions.current.length === 0 ||
+        !wsRef.current ||
+        wsRef.current.readyState !== WebSocket.OPEN
+      ) {
         return;
       }
 
-      wsRef.current.send(JSON.stringify({
-        type: "cursor-update",
-        id: myId,
-        positions: pendingPositions.current,
-      }));
+      wsRef.current.send(
+        JSON.stringify({
+          type: "cursor-update",
+          id: myId,
+          positions: pendingPositions.current,
+        })
+      );
 
       pendingPositions.current = [];
       batchStartTime.current = 0;
@@ -203,7 +214,8 @@ export default function Cursors() {
             </div>
           </div>
           <div className="text-sm text-slate-600">
-            You are: <span className="font-semibold text-slate-900">@{myId}</span>
+            You are:{" "}
+            <span className="font-semibold text-slate-900">@{myId}</span>
           </div>
         </div>
       </div>
@@ -215,7 +227,8 @@ export default function Cursors() {
             Move your mouse around!
           </h2>
           <p className="text-slate-600">
-            Open this page in another tab or browser to see live cursors in action.
+            Open this page in another tab or browser to see live cursors in
+            action.
           </p>
           <div className="mt-4 text-sm text-slate-500">
             {Object.keys(otherCursors).length > 0 ? (
@@ -241,4 +254,3 @@ export default function Cursors() {
     </div>
   );
 }
-

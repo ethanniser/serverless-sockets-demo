@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 
-const PUSHPIN_URL = "http://localhost:7999";
-
 interface Message {
   id: string;
   content: string;
@@ -28,7 +26,7 @@ export function Stream() {
 
     try {
       console.log(`Subscribing to topic: ${topic}`);
-      const eventSource = new EventSource(`${PUSHPIN_URL}/subscribe/${topic}`);
+      const eventSource = new EventSource(`/subscribe/${topic}`);
       eventSourceRef.current = eventSource;
 
       eventSource.onopen = () => {
@@ -85,7 +83,7 @@ export function Stream() {
       setMessages((prev) => [...prev, outgoingMessage]);
 
       // Publish to the topic
-      await fetch(`${PUSHPIN_URL}/publish/${topic}`, {
+      await fetch(`/publish/${topic}`, {
         method: "POST",
         headers: { "Content-Type": "text/plain" },
         body: content,
