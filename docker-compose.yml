@@ -4,20 +4,10 @@ services:
       context: ./pushpin
       dockerfile: Dockerfile
     ports:
-      - "7999:7999"  # HTTP port
-      - "5560:5560"  # Publish port (PULL)
-      - "5563:5563"  # Command port (REP)
-      - "5564:5564"  # Stats port (PUB)
+      - "7999:7999" # HTTP port
+      - "5561:5561" # Control port (HTTP)
     depends_on:
       - origin-api
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    command: redis-server --appendonly yes
-    volumes:
-      - redis-data:/data
 
   origin-api:
     build:
@@ -27,39 +17,19 @@ services:
       - "3000:3000"
     environment:
       - PORT=3000
-      - S2_AUTH_TOKEN=${S2_AUTH_TOKEN}
-      - S2_BASIN=${S2_BASIN}
-      - REDIS_URL=redis://redis:6379
-    depends_on:
-      - redis
-
-  pubsub-service:
-    build:
-      context: ./pubsub-service
-      dockerfile: Dockerfile
-    environment:
-      - PUSHPIN_STATS_URI=tcp://pushpin:5564
-      - PUSHPIN_PUBLISH_URI=tcp://pushpin:5560
-      - S2_AUTH_TOKEN=${S2_AUTH_TOKEN}
-      - S2_BASIN=${S2_BASIN}
-    depends_on:
-      - pushpin
+      - GRIP_URL=http://pushpin:5561/
 
   client:
     build:
       context: ./client
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"  # Client dev server
+      - "8080:8080" # Client dev server
     environment:
       - PUSHPIN_URL=http://pushpin:7999
     depends_on:
       - pushpin
 
-volumes:
-  redis-data:
-
 networks:
   default:
     name: pushpin-network
-

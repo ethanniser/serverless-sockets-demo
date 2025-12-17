@@ -13,18 +13,13 @@ A full-stack real-time messaging application demonstrating Pushpin's capabilitie
          ▼
 ┌─────────────────┐
 │  Pushpin Proxy  │  Real-time reverse proxy with GRIP support
-│  Port: 7999     │
+│  Port: 7999     │  Publishes directly to channels using GRIP
 └────────┬────────┘
          │
          ▼
 ┌─────────────────┐
-│  Origin API     │  Handles subscriptions and WebSocket-over-HTTP
-│  Port: 3000     │
-└─────────────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Pubsub Service  │  Bridges S2 streams to Pushpin channels
+│  Origin API     │  Handles subscriptions, WebSocket-over-HTTP,
+│  Port: 3000     │  and publishes to Pushpin via @fanoutio/grip
 └─────────────────┘
 ```
 
@@ -32,28 +27,22 @@ A full-stack real-time messaging application demonstrating Pushpin's capabilitie
 
 ### Using Docker Compose (Recommended)
 
-1. **Create a `.env` file:**
-
-   ```bash
-   S2_AUTH_TOKEN=your-token-here
-   S2_BASIN=your-basin-name
-   ```
-
-2. **Start all services:**
+1. **Start all services:**
 
    ```bash
    docker-compose up --build
    ```
 
-3. **Access the application:**
+2. **Access the application:**
 
    - Client UI: http://localhost:8080
    - Pushpin Proxy: http://localhost:7999
    - Origin API: http://localhost:3000
 
-4. **Try the demos:**
+3. **Try the demos:**
    - Navigate to http://localhost:8080/stream for SSE streaming
    - Navigate to http://localhost:8080/chat for WebSocket chat
+   - Navigate to http://localhost:8080/cursors for live cursors
 
 ### Local Development
 
@@ -106,17 +95,10 @@ docker-compose up pushpin
 - Handles subscription requests
 - WebSocket-over-HTTP endpoint
 - Chat room management
-- Message publishing
+- Message publishing via @fanoutio/grip
+- Publishes directly to Pushpin's HTTP control interface
 
-**Tech:** Bun, TypeScript
-
-### 4. Pubsub Service
-
-- Listens to Pushpin stats
-- Subscribes to S2 streams
-- Forwards messages to Pushpin channels
-
-**Tech:** Bun, TypeScript, ZeroMQ
+**Tech:** Bun, TypeScript, @fanoutio/grip
 
 ## Features
 
@@ -132,6 +114,14 @@ docker-compose up pushpin
 - Multi-user chat rooms
 - Real-time message broadcasting
 - Join/leave notifications
+- WebSocket-over-HTTP protocol
+
+### Live Cursors
+
+- Figma-style real-time cursor tracking
+- See other users' cursors move in real-time
+- Smooth animations with position batching
+- Automatic cleanup of stale cursors
 - WebSocket-over-HTTP protocol
 
 ## Docker Commands
@@ -174,8 +164,8 @@ docker-compose up client
 # Start just client and its dependencies
 docker-compose up client
 
-# Start without pubsub service
-docker-compose up pushpin origin-api client
+# Start only backend services
+docker-compose up pushpin origin-api
 ```
 
 ## Project Structure
@@ -198,15 +188,12 @@ pushpin/
 │   │   ├── handlers/    # Route handlers
 │   │   │   ├── socket.ts      # WebSocket-over-HTTP handler
 │   │   │   ├── subscribe.ts   # SSE subscription handler
-│   │   │   └── publish.ts     # Message publishing
+│   │   │   └── publish.ts     # Message publishing via GRIP
 │   │   └── index.ts     # Server entry point
 │   └── Dockerfile
 ├── pushpin/             # Pushpin config
 │   ├── pushpin.conf
 │   ├── routes
-│   └── Dockerfile
-├── pubsub-service/      # S2 bridge
-│   ├── index.ts
 │   └── Dockerfile
 └── docker-compose.yml
 ```
@@ -218,18 +205,21 @@ pushpin/
 - `GET /` - Home page
 - `GET /stream` - SSE demo page
 - `GET /chat` - WebSocket chat page
+- `GET /cursors` - Live cursors demo page
 
 ### Pushpin (7999)
 
 - `GET /subscribe/:topic` - Subscribe to SSE stream
-- `WS /socket` - WebSocket connection
+- `WS /socket` - WebSocket connection for chat
+- `WS /cursors` - WebSocket connection for live cursors
 - `POST /publish/:topic` - Publish message to topic
 
 ### Origin API (3000)
 
 - `GET /subscribe/:topic` - Handle subscription (GRIP)
-- `GET /socket` - WebSocket-over-HTTP handler
-- `POST /publish/:topic` - Publish to S2 stream
+- `GET /socket` - WebSocket-over-HTTP handler for chat
+- `GET /cursors` - WebSocket-over-HTTP handler for live cursors
+- `POST /publish/:topic` - Publish to Pushpin via GRIP
 
 ## How It Works
 
@@ -241,13 +231,23 @@ pushpin/
 4. Pushpin holds connection and subscribes to channel
 5. Messages published to channel are streamed to client
 
-### WebSocket Flow
+### WebSocket Flow (Chat)
 
 1. Client connects to `/socket` WebSocket on Pushpin
 2. Pushpin uses WebSocket-over-HTTP to Origin API
 3. Origin API manages chat rooms and subscriptions
 4. Messages are published to room channels via Pushpin API
 5. Pushpin broadcasts to all subscribers in the room
+
+### Live Cursors Flow
+
+1. Client connects to `/cursors` WebSocket on Pushpin
+2. Pushpin uses WebSocket-over-HTTP to Origin API
+3. Client batches cursor positions every 500ms with timestamps
+4. Origin API publishes cursor updates to global cursor channel
+5. Pushpin broadcasts to all connected clients
+6. Clients replay cursor movements using `requestAnimationFrame`
+7. Stale cursors are automatically cleaned up after 10 seconds
 
 ## Development
 
@@ -307,20 +307,13 @@ docker run -p 8080:8080 -e PUSHPIN_URL=http://pushpin:7999 pushpin-client:prod
 
 ### Environment Variables
 
-Create a `.env` file:
+Optional environment variables can be set:
 
 ```bash
-# Required: S2 StreamStore credentials
-S2_AUTH_TOKEN=your-token-here
-S2_BASIN=your-basin-name
-
-# Optional: Service URLs
+# Service URLs
 PUSHPIN_URL=http://localhost:7999
 PORT=3000
-
-# Optional: Pushpin ZMQ endpoints
-PUSHPIN_STATS_URI=tcp://localhost:5564
-PUSHPIN_PUBLISH_URI=tcp://localhost:5560
+GRIP_URL=http://pushpin:5561/  # Pushpin control endpoint
 ```
 
 ## Ports
@@ -329,10 +322,8 @@ PUSHPIN_PUBLISH_URI=tcp://localhost:5560
 | --------------- | ---- | -------------------- |
 | Client          | 8080 | React UI dev server  |
 | Pushpin         | 7999 | HTTP/WebSocket proxy |
+| Pushpin Control | 5561 | HTTP control API     |
 | Origin API      | 3000 | Backend API          |
-| Pushpin Publish | 5560 | ZMQ PULL socket      |
-| Pushpin Command | 5563 | ZMQ REP socket       |
-| Pushpin Stats   | 5564 | ZMQ PUB socket       |
 
 ## Troubleshooting
 

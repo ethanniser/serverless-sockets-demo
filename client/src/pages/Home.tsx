@@ -10,7 +10,7 @@ export function Home() {
           Events (SSE) and WebSockets, designed for serverless deployment.
         </p>
 
-        <div className="grid md:grid-cols-2 gap-6 mt-8">
+        <div className="grid md:grid-cols-3 gap-6 mt-8">
           <div className="border border-gray-200 rounded-lg p-6">
             <div className="text-3xl mb-3">📡</div>
             <h2 className="text-xl font-semibold text-gray-800 mb-2">
@@ -43,6 +43,23 @@ export function Home() {
               className="inline-block bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-4 rounded transition-colors"
             >
               Try Chat →
+            </a>
+          </div>
+
+          <div className="border border-gray-200 rounded-lg p-6">
+            <div className="text-3xl mb-3">🖱️</div>
+            <h2 className="text-xl font-semibold text-gray-800 mb-2">
+              Live Cursors
+            </h2>
+            <p className="text-gray-600 mb-4">
+              See other users' cursors move in real-time! Figma-style live
+              cursors with smooth animations and position batching.
+            </p>
+            <a
+              href="/cursors"
+              className="inline-block bg-purple-500 hover:bg-purple-600 text-white font-medium py-2 px-4 rounded transition-colors"
+            >
+              Try Cursors →
             </a>
           </div>
         </div>

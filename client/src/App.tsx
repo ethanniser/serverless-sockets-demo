@@ -8,6 +8,7 @@ import {
 import { Home } from "./pages/Home";
 import { Stream } from "./pages/Stream";
 import { Chat } from "./pages/Chat";
+import Cursors from "./pages/Cursors";
 
 function NavBar() {
   const location = useLocation();
@@ -49,16 +50,27 @@ function NavBar() {
         >
           Chat (WS)
         </Link>
+        <Link
+          to="/cursors"
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${isActive(
+            "/cursors"
+          )}`}
+        >
+          Cursors
+        </Link>
       </div>
     </nav>
   );
 }
 
 export function App() {
+  const location = useLocation();
+  const isFullScreen = location.pathname === "/cursors";
+
   return (
-    <BrowserRouter>
-      <div className="min-h-screen bg-gray-50">
-        <NavBar />
+    <div className="min-h-screen bg-gray-50">
+      {!isFullScreen && <NavBar />}
+      {!isFullScreen ? (
         <main className="container mx-auto px-6 py-8">
           <Routes>
             <Route path="/" element={<Home />} />
@@ -66,7 +78,19 @@ export function App() {
             <Route path="/chat" element={<Chat />} />
           </Routes>
         </main>
-      </div>
+      ) : (
+        <Routes>
+          <Route path="/cursors" element={<Cursors />} />
+        </Routes>
+      )}
+    </div>
+  );
+}
+
+export function AppWrapper() {
+  return (
+    <BrowserRouter>
+      <App />
     </BrowserRouter>
   );
 }

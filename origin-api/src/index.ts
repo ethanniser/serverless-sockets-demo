@@ -1,6 +1,7 @@
-import * as socketHandler from "./handlers/socket";
-import * as subscribeHandler from "./handlers/subscribe";
-import * as publishHandler from "./handlers/publish";
+import * as socketV2Handler from "./handlers/socket-v2";
+import * as subscribeV2Handler from "./handlers/subscribe-v2";
+import * as publishV2Handler from "./handlers/publish-v2";
+import * as cursorsV2Handler from "./handlers/cursors-v2";
 
 const PORT = process.env.PORT || 3000;
 
@@ -20,19 +21,24 @@ const handleOptions = () => {
 const server = Bun.serve({
   port: PORT,
   routes: {
-    // WebSocket-over-HTTP endpoint
-    "/socket": socketHandler.GET,
+    // ========================================
+    // v2 APIs using @fanoutio/grip abstractions
+    // ========================================
 
-    // Dynamic route for /subscribe/:topic
+    // WebSocket-over-HTTP endpoint for chat (v2)
+    "/socket": socketV2Handler.GET,
+
+    // WebSocket-over-HTTP endpoint for cursors (v2)
+    "/cursors": cursorsV2Handler.GET,
+
+    // Dynamic route for /v2/subscribe/:topic
     "/subscribe/:topic": {
-      GET: subscribeHandler.GET,
-      OPTIONS: handleOptions,
+      GET: subscribeV2Handler.GET,
     },
 
-    // POST handler for /publish/:topic
+    // POST handler for /v2/publish/:topic
     "/publish/:topic": {
-      POST: publishHandler.POST,
-      OPTIONS: handleOptions,
+      POST: publishV2Handler.POST,
     },
   },
 
@@ -47,4 +53,3 @@ const server = Bun.serve({
 });
 
 console.log(`🚀 Origin API server running on port ${server.port}`);
-

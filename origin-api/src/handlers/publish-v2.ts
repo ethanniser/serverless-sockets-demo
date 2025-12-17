@@ -1,7 +1,12 @@
-import { S2 } from "@s2-dev/streamstore";
+// HTTP streaming publish handler (v2)
+// Uses @fanoutio/grip's Publisher abstraction
 
-const s2 = new S2({ accessToken: process.env.S2_AUTH_TOKEN! });
-const basin = process.env.S2_BASIN!;
+import { Publisher } from "@fanoutio/grip";
+
+// Initialize GRIP publisher
+const publisher = new Publisher({
+  control_uri: process.env.GRIP_URL || "http://pushpin:5561/",
+});
 
 export const POST = async (req: Request): Promise<Response> => {
   const url = new URL(req.url);
@@ -14,51 +19,38 @@ export const POST = async (req: Request): Promise<Response> => {
   };
 
   if (!topic) {
-    return new Response("Topic required", { 
+    return new Response("Topic required", {
       status: 400,
       headers: corsHeaders,
     });
   }
 
   const body = await req.text();
-  console.log(`[PUBLISH] Topic: ${topic}, Message: ${body}`);
+  console.log(`[Publish-v2] Topic: ${topic}, Message: ${body}`);
 
   try {
     // Format message as proper SSE (Server-Sent Events)
-    // SSE format: "data: <message>\n\n"
     const sseMessage = `data: ${body}\n\n`;
-    
-    const pushpinItem = {
-      channel: topic,
-      formats: {
-        "http-stream": {
-          content: sseMessage,
-        },
-      },
-    };
-    
-    await s2.records.append({
-      s2Basin: basin,
-      stream: `v1/${topic}`,
-      appendInput: { records: [{ body: JSON.stringify(pushpinItem) }] },
-    });
+
+    // Publish directly to Pushpin using GRIP
+    await publisher.publishHttpStream(topic, sseMessage);
 
     return new Response(
       JSON.stringify({
         success: true,
         topic,
-        message: "Published to S2 stream",
+        message: "Published via GRIP",
       }),
       {
         status: 200,
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           ...corsHeaders,
         },
       }
     );
   } catch (error) {
-    console.error("[PUBLISH ERROR]", error);
+    console.error("[Publish-v2 ERROR]", error);
     return new Response(
       JSON.stringify({
         success: false,
@@ -66,7 +58,7 @@ export const POST = async (req: Request): Promise<Response> => {
       }),
       {
         status: 500,
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           ...corsHeaders,
         },
@@ -74,4 +66,3 @@ export const POST = async (req: Request): Promise<Response> => {
     );
   }
 };
-
