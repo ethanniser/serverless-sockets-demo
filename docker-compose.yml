@@ -7,28 +7,20 @@ services:
       - "7999:7999" # HTTP port
       - "5561:5561" # Control port (HTTP)
     depends_on:
-      - origin-api
+      - app
 
-  origin-api:
+  app:
     build:
-      context: ./origin-api
+      context: ./app
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
     environment:
       - PORT=3000
       - GRIP_URL=http://pushpin:5561/
-
-  client:
-    build:
-      context: ./client
-      dockerfile: Dockerfile
-    ports:
-      - "8080:8080" # Client dev server
-    environment:
-      - PUSHPIN_URL=http://pushpin:7999
-    depends_on:
-      - pushpin
+      - PUSHPIN_HOST=pushpin
+      - PUSHPIN_PORT=7999
+    depends_on: []
 
 networks:
   default:

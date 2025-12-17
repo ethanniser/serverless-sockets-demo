@@ -1,5 +1,2 @@
-# Default route for everything else
-*,proto=http origin-api:3000
-*,proto=ws origin-api:3000,over_http
-
-
+*,proto=http app:3000
+*,proto=ws app:3000,over_http
