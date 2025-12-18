@@ -17,7 +17,7 @@ const BATCHING_TIME = 500; // Batch cursor updates every 500ms
 
 export default function Cursors() {
   const [otherCursors, setOtherCursors] = useState<Record<string, CursorData>>(
-    {}
+    {},
   );
   const [isConnected, setIsConnected] = useState(false);
   const [myId] = useState(() => generateUsername());
@@ -43,7 +43,7 @@ export default function Cursors() {
           JSON.stringify({
             type: "cursor-join",
             id: myId,
-          })
+          }),
         );
         hasJoined.current = true;
       }
@@ -122,7 +122,7 @@ export default function Cursors() {
           JSON.stringify({
             type: "cursor-leave",
             id: myId,
-          })
+          }),
         );
       }
       ws.close();
@@ -145,7 +145,7 @@ export default function Cursors() {
           type: "cursor-update",
           id: myId,
           positions: pendingPositions.current,
-        })
+        }),
       );
 
       pendingPositions.current = [];

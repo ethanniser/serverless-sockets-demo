@@ -30,7 +30,7 @@ export function NavBar() {
           </span>
         </Link>
         <a
-          href="https://github.com"
+          href="https://github.com/ethanniser/serverless-sockets-demo.git"
           target="_blank"
           rel="noopener noreferrer"
           className="text-sm text-gray-400 hover:text-white transition-colors"
