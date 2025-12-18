@@ -1,2 +1,2 @@
-*,proto=http app:3000
-*,proto=ws app:3000,over_http
+*,proto=ws host.docker.internal:3000,over_http
+*,proto=http host.docker.internal:3000

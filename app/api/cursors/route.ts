@@ -28,7 +28,7 @@ async function publishToCursors(message: string) {
   }
 }
 
-export async function GET(req: Request): Promise<Response> {
+export async function POST(req: Request): Promise<Response> {
   // Verify this is a WebSocket-over-HTTP request
   if (!isWsOverHttp(req)) {
     return new Response("Not a WebSocket-over-HTTP request", { status: 400 });

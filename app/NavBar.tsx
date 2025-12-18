@@ -19,10 +19,10 @@ export function NavBar() {
 
   return (
     <nav className="bg-gray-800 shadow-lg w-full flex items-center justify-between px-6 py-4">
-      <div className="flex items-center gap-2">
+      <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
         <span className="text-2xl">⚡</span>
         <span className="text-xl font-bold text-white">Serverless SSE/WS</span>
-      </div>
+      </Link>
       <div className="flex gap-4">
         <Link
           href="/"
