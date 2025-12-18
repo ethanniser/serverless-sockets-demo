@@ -2,7 +2,7 @@ services:
   pushpin:
     build:
       context: ./pushpin
-      dockerfile: Dockerfile
+      dockerfile: development/Dockerfile
     ports:
       - "7999:7999" # HTTP port
       - "5561:5561" # Control port (HTTP)
