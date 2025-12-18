@@ -1,2 +1,2 @@
-*,proto=ws host.docker.internal:3000,over_http
-*,proto=http host.docker.internal:3000
+*,proto=ws app.railway.internal:8080,over_http
+*,proto=http app.railway.internal:8080
