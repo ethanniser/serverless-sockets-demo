@@ -115,14 +115,10 @@ async function publishToChannel(
   message: Uint8Array
 ) {
   try {
-    console.log(
-      `[Yjs] Publishing ${message.length} bytes to channel ${channel}`
-    );
     await publisher.publishFormats(
       channel,
       new WebSocketMessageFormat(message)
     );
-    console.log(`[Yjs] Published successfully to ${channel}`);
   } catch (error) {
     console.error(`[Yjs] Error publishing to channel ${channel}:`, error);
   }
@@ -151,13 +147,18 @@ function encodeDisconnectAwareness(
   clientId: number,
   clock: number
 ): Uint8Array {
+  // First encode the awareness update itself (y-protocols format)
+  const awarenessEncoder = encoding.createEncoder();
+  encoding.writeVarUint(awarenessEncoder, 1); // 1 client
+  encoding.writeVarUint(awarenessEncoder, clientId);
+  encoding.writeVarUint(awarenessEncoder, clock + 1); // increment clock so it's accepted
+  encoding.writeVarString(awarenessEncoder, "null"); // null state = disconnected
+  const awarenessUpdate = encoding.toUint8Array(awarenessEncoder);
+
+  // Then wrap it in the message format (y-websocket expects VarUint8Array)
   const encoder = encoding.createEncoder();
   encoding.writeVarUint(encoder, messageAwareness);
-  // Awareness update format: count, then [clientId, clock, state] per client
-  encoding.writeVarUint(encoder, 1); // 1 client
-  encoding.writeVarUint(encoder, clientId);
-  encoding.writeVarUint(encoder, clock + 1); // increment clock so it's accepted
-  encoding.writeVarString(encoder, "null"); // null state = disconnected
+  encoding.writeVarUint8Array(encoder, awarenessUpdate);
   return encoding.toUint8Array(encoder);
 }
 

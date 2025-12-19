@@ -51,6 +51,7 @@ export default function YjsEditor() {
     // URL format: ws://host/api/yjs/{room}
     // y-websocket constructs: serverUrl + "/" + roomname
     const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "";
+    // const apiBase = "http://localhost:1234";
     const wsUrl = apiBase.replace(/^http/, "ws") + "/api/yjs";
 
     const provider = new WebsocketProvider(wsUrl, roomName, doc);
