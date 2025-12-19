@@ -155,23 +155,29 @@ export function createRedisAwareness(
   return {
     async getAll(docName: string): Promise<Uint8Array[]> {
       // Get all awareness keys for this document
-      const keys = await redis.keys(awarenessPattern(docName));
+      const pattern = awarenessPattern(docName);
+      const keys = await redis.keys(pattern);
+      console.log(`[Redis] getAll awareness pattern=${pattern} found ${keys.length} keys:`, keys);
       if (keys.length === 0) return [];
 
       // Get all values
       const values = await redis.mgetBuffer(keys);
-      return values
+      const result = values
         .filter((v): v is Buffer => v !== null)
         .map((v) => new Uint8Array(v));
+      console.log(`[Redis] getAll returning ${result.length} awareness states`);
+      return result;
     },
 
     async set(docName: string, clientId: number, update: Uint8Array): Promise<void> {
       const key = awarenessKey(docName, clientId);
+      console.log(`[Redis] set awareness key=${key} ttl=${ttl} bytes=${update.length}`);
       await redis.setex(key, ttl, Buffer.from(update));
     },
 
     async remove(docName: string, clientId: number): Promise<void> {
       const key = awarenessKey(docName, clientId);
+      console.log(`[Redis] remove awareness key=${key}`);
       await redis.del(key);
     },
   };

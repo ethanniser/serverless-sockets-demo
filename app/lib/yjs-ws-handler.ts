@@ -115,10 +115,14 @@ async function publishToChannel(
   message: Uint8Array
 ) {
   try {
+    console.log(
+      `[Yjs] Publishing ${message.length} bytes to channel ${channel}`
+    );
     await publisher.publishFormats(
       channel,
       new WebSocketMessageFormat(message)
     );
+    console.log(`[Yjs] Published successfully to ${channel}`);
   } catch (error) {
     console.error(`[Yjs] Error publishing to channel ${channel}:`, error);
   }
@@ -143,7 +147,10 @@ function encodeSyncStep2(update: Uint8Array): Uint8Array {
 }
 
 // Encode a disconnect awareness update for a client
-function encodeDisconnectAwareness(clientId: number, clock: number): Uint8Array {
+function encodeDisconnectAwareness(
+  clientId: number,
+  clock: number
+): Uint8Array {
   const encoder = encoding.createEncoder();
   encoding.writeVarUint(encoder, messageAwareness);
   // Awareness update format: count, then [clientId, clock, state] per client
@@ -257,9 +264,14 @@ export function makeYjsHandler(options: YjsHandlerOptions = {}) {
       if (awarenessStore) {
         try {
           const awarenessStates = await awarenessStore.getAll(docName);
-          console.log(`[Yjs] Loading ${awarenessStates.length} awareness states for new client`);
+          console.log(
+            `[Yjs] Loading ${awarenessStates.length} awareness states for new client`
+          );
           for (const state of awarenessStates) {
-            console.log(`[Yjs] Sending stored awareness (${state.length} bytes):`, parseAwarenessUpdate(state));
+            console.log(
+              `[Yjs] Sending stored awareness (${state.length} bytes):`,
+              parseAwarenessUpdate(state)
+            );
             wsContext.sendBinary(Buffer.from(encodeAwarenessMessage(state)));
           }
         } catch (error) {
@@ -275,17 +287,20 @@ export function makeYjsHandler(options: YjsHandlerOptions = {}) {
       if (rawMessage === null) {
         // Connection closed - clean up awareness using stored metadata
         console.log(`[Yjs] Connection closed: ${connectionId}`);
+        console.log(`[Yjs] meta:`, wsContext.meta);
 
         // Use metadata from Pushpin to identify which client disconnected
-        const storedClientId = wsContext.origMeta["client-id"];
-        const storedClock = wsContext.origMeta["client-clock"];
+        const storedClientId = wsContext.meta["client-id"];
+        const storedClock = wsContext.meta["client-clock"];
 
         if (storedClientId && storedClock) {
           const clientId = parseInt(storedClientId, 10);
           const clock = parseInt(storedClock, 10);
 
           if (!isNaN(clientId) && !isNaN(clock)) {
-            console.log(`[Yjs] Client ${clientId} disconnected, broadcasting`);
+            console.log(
+              `[Yjs] Client ${clientId} disconnected, broadcasting to ${channel}`
+            );
 
             // Remove from store (TTL is backup if this doesn't run)
             if (awarenessStore) {
@@ -298,8 +313,15 @@ export function makeYjsHandler(options: YjsHandlerOptions = {}) {
 
             // Broadcast disconnect to other clients
             const disconnectMsg = encodeDisconnectAwareness(clientId, clock);
+            console.log(
+              `[Yjs] Broadcasting disconnect message (${disconnectMsg.length} bytes)`
+            );
             await publishToChannel(publisher, channel, disconnectMsg);
           }
+        } else {
+          console.log(
+            `[Yjs] No client metadata found, skipping disconnect broadcast`
+          );
         }
 
         wsContext.close();
@@ -360,19 +382,28 @@ export function makeYjsHandler(options: YjsHandlerOptions = {}) {
           if (awarenessStore) {
             try {
               const clients = parseAwarenessUpdate(awarenessUpdate);
+              console.log(`[Yjs] Received awareness update:`, clients);
               for (const { clientId, clock, isNull } of clients) {
                 if (isNull) {
+                  console.log(
+                    `[Yjs] Removing awareness for client ${clientId} (null state)`
+                  );
                   await awarenessStore.remove(docName, clientId);
                 } else {
+                  console.log(
+                    `[Yjs] Storing awareness for client ${clientId} clock=${clock} (${awarenessUpdate.length} bytes)`
+                  );
                   await awarenessStore.set(docName, clientId, awarenessUpdate);
 
-                  // Bind client ID and clock to connection for disconnect cleanup
-                  // Update clock on every awareness update (it increments)
-                  if (!wsContext.origMeta["client-id"]) {
+                  // Bind client ID to connection for disconnect cleanup
+                  // Only set once - check meta (not origMeta) to prevent overwrites within same request
+                  if (!wsContext.meta["client-id"]) {
                     wsContext.meta["client-id"] = String(clientId);
                   }
-                  // Always update clock to latest value
-                  wsContext.meta["client-clock"] = String(clock);
+                  // Always update clock for THIS client's awareness (needed for disconnect)
+                  if (wsContext.meta["client-id"] === String(clientId)) {
+                    wsContext.meta["client-clock"] = String(clock);
+                  }
                 }
               }
             } catch (error) {
