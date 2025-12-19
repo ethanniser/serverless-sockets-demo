@@ -56,6 +56,33 @@ export interface PersistenceProvider {
   storeUpdate(docName: string, update: Uint8Array): Promise<void>;
 }
 
+/**
+ * Awareness store interface - stores ephemeral presence state
+ *
+ * Awareness is stored per-client with automatic expiry (TTL).
+ * This enables new clients to see who's currently online.
+ */
+export interface AwarenessStore {
+  /**
+   * Get all awareness states for a document
+   * Returns array of raw awareness update bytes (one per client)
+   */
+  getAll(docName: string): Promise<Uint8Array[]>;
+
+  /**
+   * Store awareness update for a client
+   * Should auto-expire after ~30 seconds (awareness timeout)
+   * @param clientId - The Yjs client ID
+   * @param update - Raw awareness update bytes
+   */
+  set(docName: string, clientId: number, update: Uint8Array): Promise<void>;
+
+  /**
+   * Remove awareness for a client (on disconnect)
+   */
+  remove(docName: string, clientId: number): Promise<void>;
+}
+
 export type YjsHandlerOptions = {
   /** GRIP publisher control URI */
   publishUrl?: string;
@@ -65,6 +92,12 @@ export type YjsHandlerOptions = {
    * If not provided, the handler is purely stateless (relay only)
    */
   persistence?: PersistenceProvider;
+
+  /**
+   * Optional awareness store for presence state
+   * If not provided, awareness only works via broadcast (no initialstate for new clients)
+   */
+  awareness?: AwarenessStore;
 };
 
 // Extract room from URL path after base route
@@ -109,21 +142,52 @@ function encodeSyncStep2(update: Uint8Array): Uint8Array {
   return encoding.toUint8Array(encoder);
 }
 
-// Encode a QueryAwareness message (ask "who's here?")
-function encodeQueryAwareness(): Uint8Array {
+// Encode a disconnect awareness update for a client
+function encodeDisconnectAwareness(clientId: number, clock: number): Uint8Array {
   const encoder = encoding.createEncoder();
-  encoding.writeVarUint(encoder, messageQueryAwareness);
+  encoding.writeVarUint(encoder, messageAwareness);
+  // Awareness update format: count, then [clientId, clock, state] per client
+  encoding.writeVarUint(encoder, 1); // 1 client
+  encoding.writeVarUint(encoder, clientId);
+  encoding.writeVarUint(encoder, clock + 1); // increment clock so it's accepted
+  encoding.writeVarString(encoder, "null"); // null state = disconnected
   return encoding.toUint8Array(encoder);
 }
 
 // Encode a PermissionDenied message (for auth errors)
 // Exported for use in custom auth implementations
-function encodePermissionDenied(reason: string): Uint8Array {
+export function encodePermissionDenied(reason: string): Uint8Array {
   const encoder = encoding.createEncoder();
   encoding.writeVarUint(encoder, messageAuth);
   encoding.writeVarUint(encoder, messagePermissionDenied);
   encoding.writeVarString(encoder, reason);
   return encoding.toUint8Array(encoder);
+}
+
+// Encode an awareness message wrapper
+function encodeAwarenessMessage(awarenessUpdate: Uint8Array): Uint8Array {
+  const encoder = encoding.createEncoder();
+  encoding.writeVarUint(encoder, messageAwareness);
+  encoding.writeVarUint8Array(encoder, awarenessUpdate);
+  return encoding.toUint8Array(encoder);
+}
+
+// Parse awareness update to extract client IDs, clocks, and check for null states
+function parseAwarenessUpdate(
+  update: Uint8Array
+): { clientId: number; clock: number; isNull: boolean }[] {
+  const decoder = decoding.createDecoder(update);
+  const len = decoding.readVarUint(decoder);
+  const clients: { clientId: number; clock: number; isNull: boolean }[] = [];
+
+  for (let i = 0; i < len; i++) {
+    const clientId = decoding.readVarUint(decoder);
+    const clock = decoding.readVarUint(decoder);
+    const state = decoding.readVarString(decoder);
+    clients.push({ clientId, clock, isNull: state === "null" });
+  }
+
+  return clients;
 }
 
 /**
@@ -144,6 +208,7 @@ export function makeYjsHandler(options: YjsHandlerOptions = {}) {
   const {
     publishUrl = process.env.PUBLISH_URL || "http://pushpin:5561/",
     persistence,
+    awareness: awarenessStore,
   } = options;
 
   const publisher = new Publisher({ control_uri: publishUrl });
@@ -157,6 +222,10 @@ export function makeYjsHandler(options: YjsHandlerOptions = {}) {
     const connectionId = req.headers.get("Connection-Id") || "unknown";
     const docName = getDocName(req);
     const channel = `yjs:${docName}`;
+
+    // Client metadata is stored in wsContext.meta (persisted by Pushpin across requests)
+    // - origMeta: read-only, what Pushpin sent us
+    // - meta: mutable, changes are sent back as Set-Meta-* headers
 
     // Handle connection opening
     if (wsContext.isOpening()) {
@@ -184,9 +253,19 @@ export function makeYjsHandler(options: YjsHandlerOptions = {}) {
         }
       }
 
-      // Broadcast QueryAwareness to get existing clients to announce themselves
-      // Other clients will respond with their awareness state
-      await publishToChannel(publisher, channel, encodeQueryAwareness());
+      // Send stored awareness states to the new client
+      if (awarenessStore) {
+        try {
+          const awarenessStates = await awarenessStore.getAll(docName);
+          console.log(`[Yjs] Loading ${awarenessStates.length} awareness states for new client`);
+          for (const state of awarenessStates) {
+            console.log(`[Yjs] Sending stored awareness (${state.length} bytes):`, parseAwarenessUpdate(state));
+            wsContext.sendBinary(Buffer.from(encodeAwarenessMessage(state)));
+          }
+        } catch (error) {
+          console.error(`[Yjs] Error loading awareness:`, error);
+        }
+      }
     }
 
     // Process incoming messages
@@ -194,7 +273,35 @@ export function makeYjsHandler(options: YjsHandlerOptions = {}) {
       const rawMessage = wsContext.recvRaw();
 
       if (rawMessage === null) {
+        // Connection closed - clean up awareness using stored metadata
         console.log(`[Yjs] Connection closed: ${connectionId}`);
+
+        // Use metadata from Pushpin to identify which client disconnected
+        const storedClientId = wsContext.origMeta["client-id"];
+        const storedClock = wsContext.origMeta["client-clock"];
+
+        if (storedClientId && storedClock) {
+          const clientId = parseInt(storedClientId, 10);
+          const clock = parseInt(storedClock, 10);
+
+          if (!isNaN(clientId) && !isNaN(clock)) {
+            console.log(`[Yjs] Client ${clientId} disconnected, broadcasting`);
+
+            // Remove from store (TTL is backup if this doesn't run)
+            if (awarenessStore) {
+              try {
+                await awarenessStore.remove(docName, clientId);
+              } catch (error) {
+                console.error(`[Yjs] Error removing awareness:`, error);
+              }
+            }
+
+            // Broadcast disconnect to other clients
+            const disconnectMsg = encodeDisconnectAwareness(clientId, clock);
+            await publishToChannel(publisher, channel, disconnectMsg);
+          }
+        }
+
         wsContext.close();
         break;
       }
@@ -246,7 +353,34 @@ export function makeYjsHandler(options: YjsHandlerOptions = {}) {
             await publishToChannel(publisher, channel, message);
           }
         } else if (messageType === messageAwareness) {
-          // Awareness update - just broadcast, don't persist
+          // Awareness update - store and broadcast
+          const awarenessUpdate = decoding.readVarUint8Array(decoder);
+
+          // Store awareness if we have a store
+          if (awarenessStore) {
+            try {
+              const clients = parseAwarenessUpdate(awarenessUpdate);
+              for (const { clientId, clock, isNull } of clients) {
+                if (isNull) {
+                  await awarenessStore.remove(docName, clientId);
+                } else {
+                  await awarenessStore.set(docName, clientId, awarenessUpdate);
+
+                  // Bind client ID and clock to connection for disconnect cleanup
+                  // Update clock on every awareness update (it increments)
+                  if (!wsContext.origMeta["client-id"]) {
+                    wsContext.meta["client-id"] = String(clientId);
+                  }
+                  // Always update clock to latest value
+                  wsContext.meta["client-clock"] = String(clock);
+                }
+              }
+            } catch (error) {
+              console.error(`[Yjs] Error storing awareness:`, error);
+            }
+          }
+
+          // Broadcast to all subscribers
           await publishToChannel(publisher, channel, message);
         } else if (messageType === messageQueryAwareness) {
           // Query awareness - broadcast so other clients respond with their state
@@ -260,6 +394,7 @@ export function makeYjsHandler(options: YjsHandlerOptions = {}) {
     const events = wsContext.getOutgoingEvents();
     const responseBody = encodeWebSocketEvents(events);
 
+    // toHeaders() automatically converts wsContext.meta changes to Set-Meta-* headers
     return new Response(responseBody as unknown as BodyInit, {
       status: 200,
       headers: wsContext.toHeaders(),

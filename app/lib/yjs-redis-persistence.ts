@@ -1,13 +1,13 @@
-// Redis-based persistence provider for Yjs
-// Stores updates in a Redis list, merges on read using Yjs
+// Redis-based persistence and awareness providers for Yjs
 //
 // Storage format:
-// - Key: `yjs:${docName}:updates` - List of raw update bytes (base64 encoded)
+// - Key: `yjs:${docName}:updates` - List of raw update bytes
 // - Key: `yjs:${docName}:snapshot` - Optional merged snapshot for optimization
+// - Key: `yjs:${docName}:awareness:${clientId}` - Awareness state per client (with TTL)
 
 import { Redis } from "ioredis";
 import * as Y from "yjs";
-import type { PersistenceProvider } from "./yjs-ws-handler";
+import type { PersistenceProvider, AwarenessStore } from "./yjs-ws-handler";
 
 export type RedisProviderOptions = {
   /** Redis connection URL or options */
@@ -115,4 +115,64 @@ export function createRedisPersistence(
       doc.destroy();
     }
   }
+}
+
+export type RedisAwarenessOptions = {
+  /** Redis connection URL or options */
+  redis?: Redis | string;
+
+  /** Key prefix for awareness data */
+  keyPrefix?: string;
+
+  /** TTL for awareness entries in seconds (default: 30, matching y-protocols) */
+  ttl?: number;
+};
+
+/**
+ * Creates a Redis-based awareness store
+ * Stores awareness per-client with automatic TTL expiry
+ */
+export function createRedisAwareness(
+  options: RedisAwarenessOptions = {}
+): AwarenessStore {
+  const {
+    redis: redisOption,
+    keyPrefix = "yjs",
+    ttl = 30,
+  } = options;
+
+  const redis =
+    typeof redisOption === "string"
+      ? new Redis(redisOption)
+      : redisOption ?? new Redis(process.env.REDIS_URL || "redis://localhost:6379");
+
+  const awarenessKey = (docName: string, clientId: number) =>
+    `${keyPrefix}:${docName}:awareness:${clientId}`;
+
+  const awarenessPattern = (docName: string) =>
+    `${keyPrefix}:${docName}:awareness:*`;
+
+  return {
+    async getAll(docName: string): Promise<Uint8Array[]> {
+      // Get all awareness keys for this document
+      const keys = await redis.keys(awarenessPattern(docName));
+      if (keys.length === 0) return [];
+
+      // Get all values
+      const values = await redis.mgetBuffer(keys);
+      return values
+        .filter((v): v is Buffer => v !== null)
+        .map((v) => new Uint8Array(v));
+    },
+
+    async set(docName: string, clientId: number, update: Uint8Array): Promise<void> {
+      const key = awarenessKey(docName, clientId);
+      await redis.setex(key, ttl, Buffer.from(update));
+    },
+
+    async remove(docName: string, clientId: number): Promise<void> {
+      const key = awarenessKey(docName, clientId);
+      await redis.del(key);
+    },
+  };
 }
