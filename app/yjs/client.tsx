@@ -16,7 +16,9 @@ type AwarenessState = {
 };
 
 export default function YjsEditor() {
-  const [status, setStatus] = useState<"connecting" | "connected" | "disconnected">("disconnected");
+  const [status, setStatus] = useState<
+    "connecting" | "connected" | "disconnected"
+  >("disconnected");
   const [text, setText] = useState("");
   const [users, setUsers] = useState<Map<number, AwarenessState>>(new Map());
   const [myId] = useState(() => generateUsername());
@@ -138,7 +140,7 @@ export default function YjsEditor() {
 
   if (!isJoined) {
     return (
-      <div className="flex h-[calc(100vh-4rem)] w-screen flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
+      <div className="flex h-[calc(100vh-4rem)] w-screen flex-col items-center justify-center bg-linear-to-br from-slate-50 to-slate-100">
         <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-xl">
           <h1 className="mb-6 text-2xl font-bold text-slate-900">
             Join a Collaborative Document
@@ -174,7 +176,7 @@ export default function YjsEditor() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] w-screen flex-col bg-gradient-to-br from-slate-50 to-slate-100">
+    <div className="flex h-[calc(100vh-4rem)] w-screen flex-col bg-linear-to-br from-slate-50 to-slate-100">
       {/* Header */}
       <div className="border-b border-slate-200 bg-white/80 p-4 backdrop-blur-sm">
         <div className="flex w-full items-center justify-between">
@@ -190,8 +192,8 @@ export default function YjsEditor() {
                 status === "connected"
                   ? "bg-green-100 text-green-700"
                   : status === "connecting"
-                    ? "bg-yellow-100 text-yellow-700"
-                    : "bg-red-100 text-red-700"
+                  ? "bg-yellow-100 text-yellow-700"
+                  : "bg-red-100 text-red-700"
               }`}
             >
               <div
@@ -199,15 +201,15 @@ export default function YjsEditor() {
                   status === "connected"
                     ? "bg-green-500"
                     : status === "connecting"
-                      ? "bg-yellow-500"
-                      : "bg-red-500"
+                    ? "bg-yellow-500"
+                    : "bg-red-500"
                 }`}
               />
               {status === "connected"
                 ? "Connected"
                 : status === "connecting"
-                  ? "Connecting..."
-                  : "Disconnected"}
+                ? "Connecting..."
+                : "Disconnected"}
             </div>
           </div>
           <div className="flex items-center gap-4 px-6">
@@ -270,8 +272,8 @@ export default function YjsEditor() {
       <div className="border-t border-slate-200 bg-white/80 px-6 py-3 backdrop-blur-sm">
         <div className="flex items-center justify-between text-sm text-slate-500">
           <div>
-            {text.length} characters • {text.split(/\s+/).filter(Boolean).length}{" "}
-            words
+            {text.length} characters •{" "}
+            {text.split(/\s+/).filter(Boolean).length} words
           </div>
           <div>
             Powered by{" "}
