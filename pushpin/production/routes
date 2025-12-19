@@ -1,2 +1,2 @@
-*,proto=ws app.railway.internal:8080,over_http
-*,proto=http app.railway.internal:8080
+*,proto=ws stateless-sockets-demo.vercel.app,over_http
+*,proto=http stateless-sockets-demo.vercel.app
