@@ -15,6 +15,7 @@ services:
   nginx:
     build:
       context: ./nginx
+      dockerfile: Dockerfile.development
     ports:
       - "8882:8882"
     environment:
