@@ -11,3 +11,11 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+
+  nginx:
+    build:
+      context: ./nginx
+    ports:
+      - "8882:8882"
+    environment:
+      - PROXY_TARGET=${PROXY_TARGET:-pushpin:5561}
